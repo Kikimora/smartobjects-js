@@ -118,7 +118,7 @@ class Check {
 
 
     moreThan(expected, msg) {
-        if (msg == null) msg  = "%(key)s %(actual)s should not be more than %(expected)s";
+        if (msg == null) msg = "%(key)s %(actual)s should not be more than %(expected)s";
         return this.failIf(msg, function (v) {
             if (!(v > expected)) {
                 return {
@@ -130,7 +130,7 @@ class Check {
     }
 
     moreEqThan(expected, msg) {
-        if (msg == null) msg  = "%(key)s %(actual)s should not be more or equal to %(expected)s";
+        if (msg == null) msg = "%(key)s %(actual)s should not be more or equal to %(expected)s";
         return this.failIf(msg, function (v) {
             if (!(v >= expected)) {
                 return {
@@ -172,5 +172,23 @@ class Check {
         });
     }
 
+    toDate(msg) {
+        if (msg == null) {
+            msg = "Value (%(actual)s) is not a date";
+        }
+        return this.failIf(msg, (v)=> {
+            var parsed;
+            if (!(v instanceof Date)) {
+                parsed = Date.parse(v);
+                this.value(new Date());
+                this.value().setTime(parsed);
+                if (isNaN(parsed)) {
+                    return {
+                        actual: v
+                    };
+                }
+            }
+        });
+    }
 }
 module.exports = Check;

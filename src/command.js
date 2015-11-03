@@ -13,16 +13,22 @@ class Command extends EventEmitter {
         if (!config) {
             throw new Error("Command config required");
         }
-        this.condition = config.canExecute;
         this.action = config.execute;
         this._context = context || null;
         this._isRunning = false;
-        config = _.omit(config, ["canExecute", "execute"]);
-        _.forOwn(config, (value, key) => {
+        let plugins = _.omit(config, ["canExecute", "execute"]);
+        _.forOwn(plugins, (value, key) => {
             if (Command.ext[key]) {
-                Command.ext[key](this, value);
+                Command.ext[key](this, value, config);
             }
         });
+        if (config.canExecute != null) {
+            this.condition = config.canExecute;
+        } else {
+            this.condition = function () {
+                return !this._isRunning;
+            }
+        }
     }
 
     get action() {
@@ -64,10 +70,16 @@ class Command extends EventEmitter {
                 this._promise = $.Deferred().reject(e, "error", e.message).promise();
                 console.warn('Command action failed with exception', e);
             }
-
-            setTimeout(() => {
-                this._finishExecute();
-            });
+            if (this._promise.state() === "pending") {
+                this._promise.always(() => {
+                    this._finishExecute();
+                });
+            } else {
+                //don't run finish events synchronously
+                setTimeout(() => {
+                    this._finishExecute();
+                });
+            }
 
             return this._promise;
         } else {
@@ -76,21 +88,22 @@ class Command extends EventEmitter {
     }
 
     _finishExecute() {
-        this._promise.always(() => {
-            this._promise = null;
-            this._isRunning = false;
-            this.notifyCanExecute();
-            this.emit('execute', 'finished');
-        });
-    };
+        this._promise = null;
+        this._isRunning = false;
+        this.notifyCanExecute();
+        this.emit('execute', 'finished');
+    }
 
-    tryExecute() {
+    tryExecute() {        
         var canExecute = this.canExecute.apply(this, arguments);
         if (canExecute) {
             return this.execute.apply(this, arguments);
         } else {
             var result = $.Deferred();
-            result.reject();
+            //don't run finish events synchronously
+            setTimeout(()=>{
+                result.reject();
+            });
             return result.promise();
         }
     }
@@ -99,13 +112,8 @@ class Command extends EventEmitter {
         this.emit('canExecute');
     }
 
-    canExecute() {
-        if (this.isRunning) return false;
-        if (this._canExecute) {
-            return this._canExecute.apply(this._context, arguments);
-        } else {
-            return true;
-        }
+    canExecute() {        
+        return this._canExecute.apply(this._context, arguments);
     }
 
     abort() {
@@ -135,42 +143,44 @@ class Command extends EventEmitter {
 Command.ext = {
     debounce: function (command, config) {
         var originalAction = command.action;
-        var debouncedExecute = _.debounce(function () {
-            var result;
-            try {
-                result = originalAction.apply(command.context, arguments);
-                if (result && _.isFunction(result.always)) {
-                    result.done(()=> {
-                        command._debouncedResult.resolve(arguments);
-                    }).fail(()=> {
-                        command._debouncedResult.reject(arguments);
-                    }).always(()=> {
-                        command._debouncedResult = null;
-                    });
-                } else {
-                    command._debouncedResult.resolve(result);
-                    command._debouncedResult = null;
-                }
-            } catch (e) {
-                command._debouncedResult.reject(command.context, e);
-                command._debouncedResult = null;
-                console.warn('Debounced command action failed with exception', e);
-            }
-            return result;
-        }, config.timeout, config.config);
-
         command.action = (agrs)=> {
             if (!command._debouncedResult) {
                 command._debouncedResult = $.Deferred();
-            }
-            debouncedExecute(agrs);
+            }            
+            clearTimeout(command._timeout);
+            command._timeout = setTimeout(function () {                
+                var result;
+                try {
+                    result = originalAction.apply(command.context, arguments);
+                    if (result && _.isFunction(result.always)) {
+                        result.done(()=> {
+                            command._debouncedResult.resolve(arguments);
+                        }).fail(()=> {
+                            command._debouncedResult.reject(arguments);
+                        }).always(()=> {
+                            command._debouncedResult = null;
+                        });
+                    } else {
+                        command._debouncedResult.resolve(result);
+                        command._debouncedResult = null;
+                    }
+                } catch (e) {
+                    command._debouncedResult.reject(command.context, e);
+                    command._debouncedResult = null;
+                    console.warn('Debounced command action failed with exception', e);
+                }
+            }, config.timeout);
             return command._debouncedResult.promise();
         };
+        //override default canExecute
+        if (command.condition == null) {
+            command.condition = function () { return true; }
+        }
     },
 
-    once: function (command) {
+    once: function (command, config, commandConfig) {
         var executed = false;
-        var condition = command.condition;
+        var condition = commandConfig.canExecute || function () { return true; };
         command.condition = function () {
             return !executed && (!condition || condition.apply(command.context, arguments));
         };
