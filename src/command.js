@@ -143,7 +143,7 @@ class Command extends EventEmitter {
 Command.ext = {
     debounce: function (command, config) {
         var originalAction = command.action;
-        command.action = (agrs)=> {
+        command.action = (...args)=> {
             if (!command._debouncedResult) {
                 command._debouncedResult = $.Deferred();
             }            
@@ -151,7 +151,7 @@ Command.ext = {
             command._timeout = setTimeout(function () {                
                 var result;
                 try {
-                    result = originalAction.apply(command.context, arguments);
+                    result = originalAction.apply(command.context, args);
                     if (result && _.isFunction(result.always)) {
                         result.done(()=> {
                             command._debouncedResult.resolve(arguments);
