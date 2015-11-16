@@ -61,6 +61,9 @@ export default function (Component, params) {
         constructor(props) {
             super(props);
             this.viewModel = this._createViewModel(props);
+            this.update();
+            this._attachViewModel(props);
+            this.canSetState = false;
         }
 
         _createViewModel(props) {
@@ -80,9 +83,8 @@ export default function (Component, params) {
             this.canSetState = false;
         }
 
-        componentWillMount() {
+        componentDidMount() {
             this.canSetState = true;
-            this._attachViewModel(this.props);
         }
 
         _propertyState(key, property) {
@@ -126,7 +128,10 @@ export default function (Component, params) {
             if (this.canSetState) {
                 this.setState(stateUpdate);
             } else {
-                this.state = stateUpdate;
+                if (this.state == null) {
+                    this.state = {};
+                }
+                _.extend(this.state, stateUpdate);
             }
         }
 
