@@ -53,9 +53,6 @@ import _ from "lodash"
  *
  */
 export default function (Component, params) {
-    if (!params) return;
-    let ctor = params.clazz, factory = params.factory;
-
     class Controller extends React.Component {
 
         constructor(props) {
@@ -64,6 +61,7 @@ export default function (Component, params) {
         }
 
         _createViewModel(props) {
+            let { clazz:ctor, factory } = params;
             return ctor != null ? new ctor(props) : factory.call(this, props);
         }
 
@@ -160,22 +158,19 @@ export default function (Component, params) {
         getChildContext() {
             return {
                 viewModel: this.viewModel,
-                viewModelState: this.state
             };
         }
     }
 
     Controller.childContextTypes = {
         viewModel: React.PropTypes.object,
-        viewModelState: React.PropTypes.object
     }
 
     if (Component.contextTypes == null) {
         Component.contextTypes = {};
     }
     _.extend(Component.contextTypes, {
-        viewModel: React.PropTypes.object,
-        viewModelState: React.PropTypes.object
+        viewModel: React.PropTypes.object
     });
     return Controller;
 }
