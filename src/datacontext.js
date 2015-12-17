@@ -216,22 +216,30 @@ DataContext.property = function (name, definition) {
         properties = this.dataContext$properties;
         if (!_.isObject(definition)) throw new Error("Property definition should be an object.");
 
-        _.defaults(definition, {
+        let property = _.extend({}, definition);
+        _.defaults(property, {
             resettable: true,
             name: name
         });
 
-        properties[name] = definition;
-
-        if (definition.get && definition.set) {
-            definition.writable = true;
-            Object.defineProperty(this.prototype, name, makeRWProperty(name, definition));
-        } else if (definition.get) {
-            definition.writable = false;
-            Object.defineProperty(this.prototype, name, makeReadonlyProperty(name, definition));
+        let defaultValue = property.default;
+        if (_.isFunction(property.default)) {
+            Object.defineProperty(property, "default", {get: defaultValue})
         } else {
-            definition.writable = true;
-            Object.defineProperty(this.prototype, name, makeDefaultRWProperty(name, definition));
+            Object.defineProperty(property, "default", {value: defaultValue})
+        }
+
+        properties[name] = property;
+
+        if (property.get && property.set) {
+            property.writable = true;
+            Object.defineProperty(this.prototype, name, makeRWProperty(name, property));
+        } else if (property.get) {
+            property.writable = false;
+            Object.defineProperty(this.prototype, name, makeReadonlyProperty(name, property));
+        } else {
+            property.writable = true;
+            Object.defineProperty(this.prototype, name, makeDefaultRWProperty(name, property));
         }
     }
 };
