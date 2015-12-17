@@ -11,10 +11,13 @@ export default class DataContext extends EventEmitter {
     /**
      * Create empty data context object.
      */
-    constructor() {
+    constructor(...args) {
         super();
         this._errors = new Errors();
         this._validating = false;
+        if (this.__init != null) {
+            this.__init(...args);
+        }
     }
 
     /**
