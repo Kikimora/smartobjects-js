@@ -15,6 +15,15 @@ export default class DataContext extends EventEmitter {
         super();
         this._errors = new Errors();
         this._validating = false;
+        _.each(this.properties(), (property, name) => {
+            if (property.component != null) {
+                this[name] = new property.component(this, property);
+                let component = this[name];
+                component.attach(()=> {
+                    this.firePropertyChange(name);
+                });
+            }
+        });
         if (this.__init != null) {
             this.__init(...args);
         }
@@ -222,7 +231,13 @@ DataContext.property = function (name, definition) {
         let property = _.extend({}, definition);
         _.defaults(property, {
             resettable: true,
-            name: name
+            name: name,
+            describe: function (viewModel, key) {
+                return {
+                    [key]: viewModel[key],
+                    [key + "Errors"]: viewModel.errors(key)
+                };
+            }
         });
 
         let defaultValue = property.default;
@@ -324,6 +339,15 @@ DataContext.command = function (name, config) {
     this.property(name, {
         command: config,
         writable: false,
+        describe: function (viewModel, key) {
+            return {
+                [key]: {
+                    isRunning: viewModel[key].isRunning,
+                    canExecute: !!viewModel[key].canExecute(),
+                    error: viewModel[key].error
+                }
+            };
+        },
         get: function () {
             var cmd = this[ivar];
             if (!cmd) {
@@ -337,6 +361,18 @@ DataContext.command = function (name, config) {
         }
     });
 };
+
+DataContext.component = function (name, def) {
+    def.describe = function (viewModel, propName) {
+        let component = viewModel[propName];
+        return {
+            [propName]: _.reduce(component.properties(), (acc, property, name)=> {
+                return _.extend(acc, property.describe(component, name))
+            }, {})
+        }
+    };
+    this.property(name, def);
+}
 
 /*
  Helper method to generate command and property definitions.
@@ -365,12 +401,16 @@ DataContext.properties = function (params) {
                 if (existingProperty) {
                     if (existingProperty.command) {
                         this.command(property, definition);
+                    } else if (existingProperty.component) {
+                        this.component(property, definition);
                     } else {
                         this.property(property, definition);
                     }
                 } else {
                     if (definition.execute) {
                         this.command(property, definition);
+                    } else if (definition.component) {
+                        this.component(property, definition);
                     } else {
                         this.property(property, definition);
                     }

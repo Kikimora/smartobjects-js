@@ -52,7 +52,7 @@ import _ from "lodash"
  * @returns {Controller}
  *
  */
-export default function (Component, params) {
+export default function controller(Component, params) {
     class Controller extends React.Component {
 
         constructor(props) {
@@ -88,30 +88,9 @@ export default function (Component, params) {
         _propertyState(key, property) {
             let update = {};
             if (property != null) {
-                if (property.command) {
-                    _.extend(update, this.commandPropertyState(key, property));
-                } else {
-                    _.extend(update, this.normalPropertyState(key, property));
-                }
+                _.extend(update,  property.describe(this.viewModel, key));
             }
             return update;
-        }
-
-        normalPropertyState(key, property) {
-            return {
-                [key]: this.viewModel[key],
-                [key + "Errors"]: this.viewModel.errors(key)
-            };
-        }
-
-        commandPropertyState(key, property) {
-            return {
-                [key]: {
-                    isRunning: this.viewModel[key].isRunning,
-                    canExecute: !!this.viewModel[key].canExecute(),
-                    error: this.viewModel[key].error
-                }
-            };
         }
 
         update(property) {
