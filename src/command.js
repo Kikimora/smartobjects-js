@@ -69,6 +69,7 @@ class Command extends EventEmitter {
             } catch (e) {
                 this._promise = $.Deferred().reject(e, "error", e.message).promise();
                 console.warn('Command action failed with exception', e);
+                console.warn(e.stack); //when I print it like this Chrome display stack trace based on source maps
             }
             if (this._promise.state() === "pending") {
                 this._promise.always(() => {

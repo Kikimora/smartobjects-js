@@ -55,23 +55,23 @@ import _ from "lodash"
 export default function controller(Component, params) {
     class Controller extends React.Component {
 
-        constructor(props) {
+        constructor(props, context) {
             super(props);
-            this.viewModel = this._createViewModel(props);
+            this.viewModel = this._createViewModel(props, context);
             this.update();
             this._attachViewModel(props);
             this.canSetState = false;
         }
 
-        _createViewModel(props) {
+        _createViewModel(props, context) {
             let { clazz:ctor, factory } = params;
-            return ctor != null ? new ctor(props) : factory.call(this, props);
+            return ctor != null ? new ctor(props, context) : factory.call(this, props, context);
         }
 
         componentWillReceiveProps(props) {
             if (this.props.viewModel !== props.viewModel) {
                 this._detachViewModel();
-                this.viewModel = this._createViewModel(props);
+                this.viewModel = this._createViewModel(props, this.context);
                 this._attachViewModel(props);
             }
         }
@@ -150,6 +150,10 @@ export default function controller(Component, params) {
         viewModel: React.PropTypes.object,
     }
 
+    Controller.contextTypes = {
+        viewModel: React.PropTypes.object
+    }
+
     if (Component.contextTypes == null) {
         Component.contextTypes = {};
     }
@@ -158,3 +162,4 @@ export default function controller(Component, params) {
     });
     return Controller;
 }
+

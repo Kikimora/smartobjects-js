@@ -16,12 +16,8 @@ export default class DataContext extends EventEmitter {
         this._errors = new Errors();
         this._validating = false;
         _.each(this.properties(), (property, name) => {
-            if (property.component != null) {
-                this[name] = new property.component(this, property);
-                let component = this[name];
-                component.attach(()=> {
-                    this.firePropertyChange(name);
-                });
+            if (property.init != null) {
+                property.init(this, name, ...args);
             }
         });
         if (this.__init != null) {
@@ -195,23 +191,144 @@ export default class DataContext extends EventEmitter {
     }
 }
 
+/*
+ Helper method to generate command and property definitions.
+
+ Command is generated if params has 'execute' property, otherwise property is generated.
+
+ See methods 'DataContext.property' and 'DataContext.command' above for details.
+ */
+DataContext.properties = function (params) {
+    if (arguments.length == 0) {
+        var result = {};
+        var prototype = this.prototype;
+        while (prototype != null) {
+            if (prototype.constructor && prototype.constructor.dataContext$properties) {
+                var properties = prototype.constructor.dataContext$properties;
+                _.defaults(result, properties);
+            }
+            prototype = Object.getPrototypeOf(prototype);
+        }
+        return result;
+    } else {
+        for (var property in params) {
+            if (params.hasOwnProperty(property)) {
+                var definition = params[property];
+                this.property(property, definition);
+            }
+        }
+    }
+};
 
 /**
- * Generate function named 'name' which can be used to get/set object property
+ * Generate property named 'name' which can be used to get/set object property
  * When property is set, an event with same name is fired.
  * Properties could be:
  * 1. RW property MyObject.property('p', { get: function () {}, set: function () {} })
  * 2. RO property MyObject.property('p', { get: function () {} })
  * 3. Default RW property MyObject.property('p', {}); Trivial getter and setter are generated.
+ * 4. Command properties MyObject.property('command', {execute() { return 'Hello';}});
+ * 5. Components (child datacontexts) MyObject.property('command', {component:MyComonentType, arg1:1, arg2:2});
  */
-DataContext.property = function (name, definition) {
-
+DataContext.property = function (property, definition) {
     var properties;
     if (!definition) {
         var prototype = this.prototype;
         while (prototype != null) {
             if (prototype.constructor && prototype.constructor.dataContext$properties) {
                 properties = prototype.constructor.dataContext$properties;
+                if (property in properties) return properties[property];
+            }
+            prototype = Object.getPrototypeOf(prototype);
+        }
+    } else {
+        var existingProperty = this.property(property);
+        if (existingProperty != null) {
+            definition = _.extend({}, existingProperty, definition);
+        }
+        if (definition.execute) {
+            this.command(property, definition);
+        } else if (definition.component) {
+            this.component(property, definition);
+        } else {
+            this._defProperty(property, definition);
+        }
+    }
+}
+
+/**
+ * Generate readonly command property. Such property hold instance of command.
+ * When command is executed an event named as property is fired.
+ * Ex: MyObject.command('loadSome', {
+ * execute: function () { ... },
+ * canExecute: function () { ... }
+ * });
+
+ * Property definition passed to DataContext.command passed thru to Command object as is.
+ * See Command documentation for details.
+
+ * You can override commands in sub classes. Ex:
+ * class Subclass extends MyObject {}
+ * Subclass.command('loadSome', { debounce: { timeout: 1000 } });
+ */
+DataContext.command = function (name, config) {
+    var ivar = "_" + name;
+    var property = this.property(name);
+    if (property) {
+        if (!property.command)
+            throw new Error("Cannot override regular property with command");
+        config = _.extend({}, property.command, config);
+    }
+
+    this._defProperty(name, {
+        command: config,
+        writable: false,
+        describe: function (viewModel, key) {
+            return {
+                [key]: {
+                    isRunning: viewModel[key].isRunning,
+                    canExecute: !!viewModel[key].canExecute(),
+                    error: viewModel[key].error
+                }
+            };
+        },
+        get: function () {
+            var cmd = this[ivar];
+            if (!cmd) {
+                cmd = this[ivar] = new Command(config, this);
+                cmd.name = name;
+                cmd.on('execute', ()=> {
+                    this.firePropertyChange(name, cmd, cmd);
+                });
+            }
+            return this[ivar];
+        }
+    });
+};
+
+DataContext.component = function (name, def) {
+    def.describe = function (viewModel, propName) {
+        let component = viewModel[propName];
+        return {
+            [propName]: _.reduce(component.properties(), (acc, property, name)=> {
+                return _.extend(acc, property.describe(component, name))
+            }, {})
+        }
+    };
+    def.init = _.wrap(def.init || _.noop, function (init, model, name) {
+        model[name] = new this.component(model, this, name);
+    });
+    _.defaults(def, def.component.propertyDefaults);
+    this._defProperty(name, def);
+}
+
+DataContext._defProperty = function (name, definition) {
+
+    if (arguments.length == 1) {
+        var prototype = this.prototype;
+        while (prototype != null) {
+            if (prototype.constructor && prototype.constructor.dataContext$properties) {
+                let properties = prototype.constructor.dataContext$properties;
                 if (properties[name]) return properties[name];
             }
             prototype = Object.getPrototypeOf(prototype);
@@ -225,7 +342,7 @@ DataContext.property = function (name, definition) {
             });
         }
 
-        properties = this.dataContext$properties;
+        let properties = this.dataContext$properties;
         if (!_.isObject(definition)) throw new Error("Property definition should be an object.");
 
         let property = _.extend({}, definition);
@@ -309,113 +426,5 @@ var makeDefaultRWProperty = function (name, property) {
         },
         enumerable: true,
         configurable: true
-    }
-};
-
-/**
- * Generate readonly command property. Such property hold instance of command.
- * When command is executed an event named as property is fired.
- * Ex: MyObject.command('loadSome', {
- * execute: function () { ... },
- * canExecute: function () { ... }
- * });
-
- * Property definition passed to DataContext.command passed thru to Command object as is.
- * See Command documentation for details.
-
- * You can override commands in sub classes. Ex:
- * class Subclass extends MyObject {}
- * Subclass.command('loadSome', { debounce: { timeout: 1000 } });
- */
-DataContext.command = function (name, config) {
-    var ivar = "_" + name;
-    var property = this.property(name);
-    if (property) {
-        if (!property.command)
-            throw new Error("Cannot override regular property with command");
-        config = _.extend({}, property.command, config);
-    }
-
-    this.property(name, {
-        command: config,
-        writable: false,
-        describe: function (viewModel, key) {
-            return {
-                [key]: {
-                    isRunning: viewModel[key].isRunning,
-                    canExecute: !!viewModel[key].canExecute(),
-                    error: viewModel[key].error
-                }
-            };
-        },
-        get: function () {
-            var cmd = this[ivar];
-            if (!cmd) {
-                cmd = this[ivar] = new Command(config, this);
-                cmd.name = name;
-                cmd.on('execute', ()=> {
-                    this.firePropertyChange(name, cmd, cmd);
-                });
-            }
-            return this[ivar];
-        }
-    });
-};
-
-DataContext.component = function (name, def) {
-    def.describe = function (viewModel, propName) {
-        let component = viewModel[propName];
-        return {
-            [propName]: _.reduce(component.properties(), (acc, property, name)=> {
-                return _.extend(acc, property.describe(component, name))
-            }, {})
-        }
-    };
-    this.property(name, def);
-}
-
-/*
- Helper method to generate command and property definitions.
-
- Command is generated if params has 'execute' property, otherwise property is generated.
-
- See methods 'DataContext.property' and 'DataContext.command' above for details.
- */
-DataContext.properties = function (params) {
-    if (!params) {
-        var result = {};
-        var prototype = this.prototype;
-        while (prototype != null) {
-            if (prototype.constructor && prototype.constructor.dataContext$properties) {
-                var properties = prototype.constructor.dataContext$properties;
-                _.defaults(result, properties);
-            }
-            prototype = Object.getPrototypeOf(prototype);
-        }
-        return result;
-    } else {
-        for (var property in params) {
-            if (params.hasOwnProperty(property)) {
-                var definition = params[property];
-                var existingProperty = this.property(property);
-                if (existingProperty) {
-                    if (existingProperty.command) {
-                        this.command(property, definition);
-                    } else if (existingProperty.component) {
-                        this.component(property, definition);
-                    } else {
-                        this.property(property, definition);
-                    }
-                } else {
-                    if (definition.execute) {
-                        this.command(property, definition);
-                    } else if (definition.component) {
-                        this.component(property, definition);
-                    } else {
-                        this.property(property, definition);
-                    }
-                }
-            }
-        }
     }
 };
