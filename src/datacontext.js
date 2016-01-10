@@ -134,8 +134,10 @@ export default class DataContext extends EventEmitter {
             this._validating = true;
             _.each(this.properties(), (property, name)=> {
                 var descriptor = this.property(name);
-                if (descriptor && descriptor.writable) {
-                    this[name] = this[name];
+                if (descriptor) {
+                    if (descriptor.writable) {
+                        this[name] = this[name];
+                    }
                 }
             });
         } finally {
@@ -315,8 +317,9 @@ DataContext.component = function (name, def) {
             }, {})
         }
     };
-    def.init = _.wrap(def.init || _.noop, function (init, model, name) {
-        model[name] = new this.component(model, this, name);
+    def.init = _.wrap(def.init || _.noop, function (init, model, name, ...args) {
+        model[name] = new this.component(model, this, name, ...args);
+        init(model, this, name, ...args);
     });
     _.defaults(def, def.component.propertyDefaults);
     this._defProperty(name, def);
@@ -406,6 +409,11 @@ var makeRWProperty = function (name, property) {
             var oldValue = property.get.call(this);
             property.set.call(this, newValue);
             firePropertyChange(this, name, newValue, oldValue);
+            _.each(property.dependent, (p)=>{
+                if (this.property(p) != null) {
+                    firePropertyChange(this, p, this[p]);
+                }
+            });
         },
         enumerable: true,
         configurable: true
@@ -423,6 +431,11 @@ var makeDefaultRWProperty = function (name, property) {
             var oldValue = this[ivar];
             this[ivar] = newValue;
             firePropertyChange(this, name, newValue, oldValue);
+            _.each(property.dependent, (p)=>{
+                if (this.property(p) != null) {
+                    firePropertyChange(this, p, this[p]);
+                }
+            });
         },
         enumerable: true,
         configurable: true
