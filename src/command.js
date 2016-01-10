@@ -166,8 +166,10 @@ Command.ext = {
                         command._debouncedResult = null;
                     }
                 } catch (e) {
-                    command._debouncedResult.reject(command.context, e);
-                    command._debouncedResult = null;
+                    if (command._debouncedResult != null) {
+                        command._debouncedResult.reject(command.context, e);
+                        command._debouncedResult = null;
+                    }
                     console.warn('Debounced command action failed with exception', e);
                 }
             }, config.timeout);

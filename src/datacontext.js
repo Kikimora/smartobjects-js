@@ -152,7 +152,7 @@ export default class DataContext extends EventEmitter {
         return this.isValid();
     }
 
-    validating() {
+    get validating() {
         return this._validating;
     }
 
@@ -285,7 +285,7 @@ DataContext.command = function (name, config) {
     this._defProperty(name, {
         command: config,
         writable: false,
-        describe: function (viewModel, key) {
+        describe: function (viewModel, key) {            
             return {
                 [key]: {
                     isRunning: viewModel[key].isRunning,
