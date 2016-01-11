@@ -145,7 +145,7 @@ Command.ext = {
     debounce: function (command, config) {
         var originalAction = command.action;
         command.action = (...args)=> {
-            if (!command._debouncedResult) {
+            if (command._debouncedResult == null) {
                 command._debouncedResult = $.Deferred();
             }            
             clearTimeout(command._timeout);
@@ -155,9 +155,11 @@ Command.ext = {
                     result = originalAction.apply(command.context, args);
                     if (result && _.isFunction(result.always)) {
                         result.done(()=> {
-                            command._debouncedResult.resolve(arguments);
+                            if (command._debouncedResult != null)
+                                command._debouncedResult.resolve(arguments);
                         }).fail(()=> {
-                            command._debouncedResult.reject(arguments);
+                            if (command._debouncedResult != null)
+                                command._debouncedResult.reject(arguments);
                         }).always(()=> {
                             command._debouncedResult = null;
                         });
