@@ -314,7 +314,8 @@ DataContext.component = function (name, def) {
         return {
             [propName]: _.reduce(component.properties(), (acc, property, name)=> {
                 return _.extend(acc, property.describe(component, name))
-            }, {})
+            }, {}),
+            [propName + "Errors"]: viewModel.errors(propName)
         }
     };
     def.init = _.wrap(def.init || _.noop, function (init, model, name, ...args) {
