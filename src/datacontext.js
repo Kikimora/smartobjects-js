@@ -26,15 +26,25 @@ export default class DataContext extends EventEmitter {
     }
 
     /**
-     * Fire property change event
+     * Fire property change event. Also trigger dependent properties change events.
      * @param name
      * @param newValue
      * @param oldValue
      * @returns {*}
      */
     firePropertyChange(name, newValue, oldValue) {
-        if (!this._validating)
+        if (!this._validating) {
             this.emit(name, newValue, name, oldValue);
+            let property = this.property(name);
+            if (property != null && property.dependent != null) {
+                _.each(property.dependent, (p)=> {
+                    if (this.property(p) != null) {
+                        firePropertyChange(this, p, this[p]);
+                    }
+                });
+            }
+        }
+
     }
 
     /**
@@ -80,16 +90,26 @@ export default class DataContext extends EventEmitter {
      * @returns {*}
      */
     hasErrors(key) {
-        return this._errors.hasErrors(key);
+        return !this.isValid(key);
     }
 
     /**
-     * true if data context does not have any errors
+     * True if data context and it components does not have any errors
      * @param key
      * @returns {*}
      */
     isValid(key) {
-        return this._errors.isValid(key);
+        let valid = this._errors.isValid(key);
+        if (valid && key == null) {
+            valid = _.every(this.properties(), (property, name) => {
+                if (property.component != null && _.isFunction(this[name].isValid)) {
+                    return this[name].isValid();
+                } else {
+                    return true;
+                }
+            });
+        }
+        return valid;
     }
 
     /**
@@ -108,6 +128,15 @@ export default class DataContext extends EventEmitter {
      */
     clearErrors(key) {
         this._errors.clear(key);
+        if (key == null) {
+            _.every(this.properties(), (property, name) => {
+                if (property.component != null && _.isFunction(this[name].clearErrors)) {
+                    return this[name].clearErrors();
+                } else {
+                    return true;
+                }
+            });
+        }
     }
 
     /**
@@ -130,23 +159,32 @@ export default class DataContext extends EventEmitter {
      * @returns {*}
      */
     validate() {
+        let changedProps = [];
         try {
             this._validating = true;
             _.each(this.properties(), (property, name)=> {
                 var descriptor = this.property(name);
-                if (descriptor) {
-                    if (descriptor.writable) {
+                if (descriptor != null) {
+                    if (descriptor.component != null && _.isFunction(this[name].validate) && _.isFunction(this[name].isValid)) {
+                        let valid = this[name].isValid();
+                        if (valid != this[name].validate()) {
+                            changedProps.push(name);
+                        }
+                    } else if (descriptor.writable) {
+                        //trigger validation by invoking setter
+                        let valid = this.isValid(name);
                         this[name] = this[name];
+                        if (valid != this.isValid(name)) {
+                            changedProps.push(name);
+                        }
                     }
                 }
             });
         } finally {
             this._validating = false;
-            _.each(this.properties(), (property, name)=> {
-                if (this.errors(name).length > 0) {
-                    var val = this[name];
-                    return this.firePropertyChange(name, val, val);
-                }
+            _.each(changedProps, (name)=> {
+                var val = this[name];
+                this.firePropertyChange(name, val, val);
             });
         }
         return this.isValid();
@@ -285,7 +323,7 @@ DataContext.command = function (name, config) {
     this._defProperty(name, {
         command: config,
         writable: false,
-        describe: function (viewModel, key) {            
+        describe: function (viewModel, key) {
             return {
                 [key]: {
                     isRunning: viewModel[key].isRunning,
@@ -410,11 +448,6 @@ var makeRWProperty = function (name, property) {
             var oldValue = property.get.call(this);
             property.set.call(this, newValue);
             firePropertyChange(this, name, newValue, oldValue);
-            _.each(property.dependent, (p)=>{
-                if (this.property(p) != null) {
-                    firePropertyChange(this, p, this[p]);
-                }
-            });
         },
         enumerable: true,
         configurable: true
@@ -431,12 +464,7 @@ var makeDefaultRWProperty = function (name, property) {
         set(newValue) {
             var oldValue = this[ivar];
             this[ivar] = newValue;
-            firePropertyChange(this, name, newValue, oldValue);
-            _.each(property.dependent, (p)=>{
-                if (this.property(p) != null) {
-                    firePropertyChange(this, p, this[p]);
-                }
-            });
+            firePropertyChange(this, name, newValue, oldValue);            
         },
         enumerable: true,
         configurable: true

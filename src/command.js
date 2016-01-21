@@ -16,12 +16,6 @@ class Command extends EventEmitter {
         this.action = config.execute;
         this._context = context || null;
         this._isRunning = false;
-        let plugins = _.omit(config, ["canExecute", "execute"]);
-        _.forOwn(plugins, (value, key) => {
-            if (Command.ext[key]) {
-                Command.ext[key](this, value, config);
-            }
-        });
         if (config.canExecute != null) {
             this.condition = config.canExecute;
         } else {
@@ -29,6 +23,12 @@ class Command extends EventEmitter {
                 return !this._isRunning;
             }
         }
+        let plugins = _.omit(config, ["canExecute", "execute"]);
+        _.forOwn(plugins, (value, key) => {
+            if (Command.ext[key]) {
+                Command.ext[key](this, value, config);
+            }
+        });        
     }
 
     get action() {
@@ -114,7 +114,7 @@ class Command extends EventEmitter {
     }
 
     canExecute() {        
-        return this._canExecute.apply(this._context, arguments);
+        return this.condition.apply(this._context, arguments);
     }
 
     abort() {
@@ -193,7 +193,7 @@ Command.ext = {
         command.action = function () {
             var result = action.apply(command.context, arguments);
             if (result && _.isFunction(result.always)) {
-                result.done(()=> {
+                result.always(()=> {
                     executed = true;
                 });
             } else {
