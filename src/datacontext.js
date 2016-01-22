@@ -166,8 +166,9 @@ export default class DataContext extends EventEmitter {
                 var descriptor = this.property(name);
                 if (descriptor != null) {
                     if (descriptor.component != null && _.isFunction(this[name].validate) && _.isFunction(this[name].isValid)) {
-                        let valid = this[name].isValid();
-                        if (valid != this[name].validate()) {
+                        let validComponent = this[name].isValid();
+                        let validProp = this.isValid(name);
+                        if (validComponent != this[name].validate() || validProp != this.isValid(name)) {
                             changedProps.push(name);
                         }
                     } else if (descriptor.writable) {
