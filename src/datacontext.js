@@ -323,6 +323,7 @@ DataContext.command = function (name, config) {
 
     this._defProperty(name, {
         command: config,
+        dependent: config.dependent,
         writable: false,
         describe: function (viewModel, key) {
             return {
