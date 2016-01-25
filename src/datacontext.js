@@ -287,9 +287,9 @@ DataContext.property = function (property, definition) {
         if (existingProperty != null) {
             definition = _.extend({}, existingProperty, definition);
         }
-        if (definition.execute) {
+        if (definition.execute != null || definition.canExecute != null) {
             this.command(property, definition);
-        } else if (definition.component) {
+        } else if (definition.component != null) {
             this.component(property, definition);
         } else {
             this._defProperty(property, definition);
